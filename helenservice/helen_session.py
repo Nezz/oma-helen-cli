@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import re
 
@@ -8,15 +10,18 @@ from helenservice.api_exceptions import HelenAuthenticationException
 
 from .const import HTTP_READ_TIMEOUT
 
+logger = logging.getLogger(__name__)
+
 
 class HelenSession:
     HELEN_LOGIN_HOST = "https://login.helen.fi"
     TUPAS_LOGIN_URL = "https://www.helen.fi/hcc/TupasLoginFrame?service=account&locale=fi"
     LOGIN_API_VERSION = "v21"
 
-    _session: Session = None
+    def __init__(self) -> None:
+        self._session: Session | None = None
 
-    def login(self, username, password):
+    def login(self, username: str, password: str) -> HelenSession:
         """Login to Oma Helen web and follow redirects until the main page is reached.
         Will save the necessary `access-token` into a Session, which can be accessed
         with the `get_access_token()` method.
@@ -27,38 +32,38 @@ class HelenSession:
         :rtype: .HelenSession
         """
         self._session = Session()
-        logging.debug("Logging in to Oma Helen")
+        logger.debug("Logging in to Oma Helen")
         try:
             login_response = self._send_login_request(username, password)
             self._proceed_to_main_page_from_login_response(login_response)
         except Exception as exception:
-            logging.exception("Login to Oma Helen failed. Check your credentials!")
+            logger.exception("Login to Oma Helen failed. Check your credentials!")
             self._session.close()
             raise HelenAuthenticationException(exception) from exception
-        logging.debug("Logged in to Oma Helen")
+        logger.debug("Logged in to Oma Helen")
         return self
 
-    def get_access_token(self):
+    def get_access_token(self) -> str:
         """Get the access-token to use the Helen API. It is required to login before the
         token can be accessed
         """
         if self._session is None:
-            raise Exception("The session is not active. Log in first")
+            raise HelenAuthenticationException("The session is not active. Log in first")
 
         access_token = self._session.cookies.get("access-token")
 
         if access_token is None:
-            raise Exception("No access token found. Log in first")
+            raise HelenAuthenticationException("No access token found. Log in first")
 
         return access_token
 
-    def close(self):
+    def close(self) -> None:
         """Close down the session for the Oma Helen web service"""
         if self._session is not None:
             self._session.close()
-            logging.debug("HelenSession was closed")
+            logger.debug("HelenSession was closed")
 
-    def _follow_redirects(self, response: Response):
+    def _follow_redirects(self, response: Response) -> Response:
         location_header = response.headers.get("Location")
         if location_header is None:
             location_header = response.headers.get("location")
@@ -67,7 +72,9 @@ class HelenSession:
             return response
         return response
 
-    def _make_url_request(self, url: str, method: str, data=None, params=None):
+    def _make_url_request(
+        self, url: str, method: str, data: dict[str, str] | None = None, params: dict[str, str] | None = None
+    ) -> Response:
         request = Request(method, url)
 
         if data is not None:
@@ -82,19 +89,19 @@ class HelenSession:
 
         return response
 
-    def _get_html_input_value(self, soup: BeautifulSoup, attribute_name: str):
+    def _get_html_input_value(self, soup: BeautifulSoup, attribute_name: str) -> str:
         return soup.find("input", {"name": attribute_name}).get("value")
 
-    def _get_html_form_url(self, soup: BeautifulSoup):
+    def _get_html_form_url(self, soup: BeautifulSoup) -> str:
         return soup.find("form").attrs['action']
 
-    def _get_html_form_method(self, soup: BeautifulSoup):
+    def _get_html_form_method(self, soup: BeautifulSoup) -> str:
         return soup.find("form").attrs["method"]
 
-    def _get_tupas_response(self):
+    def _get_tupas_response(self) -> Response:
         return self._session.get(self.TUPAS_LOGIN_URL, timeout=HTTP_READ_TIMEOUT)
 
-    def _send_login_request(self, username, password):
+    def _send_login_request(self, username: str, password: str) -> Response:
         tupas_response = self._get_tupas_response()
         tupas_soup = BeautifulSoup(tupas_response.text, "html.parser")
         authorization_url = self._get_html_form_url(tupas_soup)
@@ -106,11 +113,11 @@ class HelenSession:
         login_payload = {"username": username, "password": password}
         return self._make_url_request(login_url, "POST", login_payload)
 
-    def _fix_oma_helen_api_url(self, url):
+    def _fix_oma_helen_api_url(self, url: str) -> str:
         fixed_url = re.sub(r"\/v\d+\/", "/" + self.LOGIN_API_VERSION + "/", url)
         return fixed_url.replace("omahelen", "oma.helen")
 
-    def _proceed_to_main_page_from_login_response(self, response: Response):
+    def _proceed_to_main_page_from_login_response(self, response: Response) -> None:
         access_granted_soup = BeautifulSoup(response.text, "html.parser")
         continue_url = self._get_html_form_url(access_granted_soup)
         continue_param_code = self._get_html_input_value(access_granted_soup, "code")
