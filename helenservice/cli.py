@@ -9,7 +9,7 @@ from datetime import date, datetime
 from getpass import getpass
 from typing import Any, Protocol, overload
 
-from helenservice.api_exceptions import InvalidDeliverySiteException
+from helenservice.api_exceptions import HelenAuthenticationException, InvalidDeliverySiteException
 
 from .api_client import HelenApiClient
 from .const import RESOLUTION_HOUR, RESOLUTION_QUARTER
@@ -51,7 +51,10 @@ def _parse_date_range(input_str: str | None) -> tuple[date, date]:
     """
     if not input_str or not input_str.strip():
         raise ValueError("No date range provided")
-    start_date_str, end_date_str = str(input_str).split(' ')
+    parts = input_str.split()
+    if len(parts) != 2:
+        raise ValueError("Please provide start and end dates in format 'YYYY-mm-dd YYYY-mm-dd'")
+    start_date_str, end_date_str = parts
     start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
     end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
     if start_date > end_date:
@@ -326,7 +329,11 @@ def main() -> None:
     username = os.environ.get("HELEN_USERNAME") or input("Username: ")
     password = os.environ.get("HELEN_PASSWORD") or getpass()
 
-    HelenCLIPrompt(username, password).cmdloop()
+    try:
+        HelenCLIPrompt(username, password).cmdloop()
+    except HelenAuthenticationException as exc:
+        logger.error("%s", exc)
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":

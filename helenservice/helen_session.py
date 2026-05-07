@@ -39,6 +39,7 @@ class HelenSession:
         except Exception as exception:
             logger.exception("Login to Oma Helen failed. Check your credentials!")
             self._session.close()
+            self._session = None
             raise HelenAuthenticationException(exception) from exception
         logger.debug("Logged in to Oma Helen")
         return self
@@ -61,6 +62,7 @@ class HelenSession:
         """Close down the session for the Oma Helen web service"""
         if self._session is not None:
             self._session.close()
+            self._session = None
             logger.debug("HelenSession was closed")
 
     def _follow_redirects(self, response: Response) -> Response:
