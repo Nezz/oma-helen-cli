@@ -8,7 +8,7 @@ from requests import Request, Response, Session
 
 from helenservice.api_exceptions import HelenAuthenticationException
 
-from .const import HTTP_READ_TIMEOUT
+from .const import HTTP_READ_TIMEOUT, MAX_REDIRECTS
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +66,19 @@ class HelenSession:
             logger.debug("HelenSession was closed")
 
     def _follow_redirects(self, response: Response) -> Response:
-        location_header = response.headers.get("Location")
-        if location_header is None:
-            location_header = response.headers.get("location")
-        if location_header is not None:
-            response = self._follow_redirects(self._session.get(location_header, timeout=HTTP_READ_TIMEOUT))
-            return response
-        return response
+        redirect_count = 0
+        while redirect_count < MAX_REDIRECTS:
+            location_header = response.headers.get("Location") or response.headers.get("location")
+            if location_header is None:
+                return response
+
+            if self._session is None:
+                raise HelenAuthenticationException("Session is None while following redirects")
+
+            response = self._session.get(location_header, timeout=HTTP_READ_TIMEOUT)
+            redirect_count += 1
+
+        raise HelenAuthenticationException(f"Max redirects ({MAX_REDIRECTS}) exceeded")
 
     def _make_url_request(
         self, url: str, method: str, data: dict[str, str] | None = None, params: dict[str, str] | None = None

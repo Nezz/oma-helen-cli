@@ -25,14 +25,16 @@ class HasDict(Protocol):
 
 
 @overload
-def _json_serializer(value: datetime) -> str: ...
+def _json_serializer(value: datetime | date) -> str: ...
 
 @overload
 def _json_serializer(value: HasDict) -> dict[str, Any]: ...
 
-def _json_serializer(value: datetime | HasDict) -> str | dict[str, Any]:
+def _json_serializer(value: datetime | date | HasDict) -> str | dict[str, Any]:
     if isinstance(value, datetime):
         return value.strftime("%Y%m%d%H%M%S")
+    elif isinstance(value, date):
+        return value.strftime("%Y-%m-%d")
     else:
         return value.__dict__
 
@@ -74,14 +76,14 @@ class HelenCLIPrompt(Cmd):
         self.api_client = HelenApiClient(self.tax, self.margin)
         self.api_client.login_and_init(username, password)
 
-    def do_exit(self, input: str | None = None) -> bool:
+    def do_exit(self, arg: str | None = None) -> bool:
         """Exit the CLI"""
 
         self.api_client.close()
         print("Bye")
         return True
 
-    def do_calculate_transfer_fees_between_dates(self, input: str | None = None) -> None:
+    def do_calculate_transfer_fees_between_dates(self, arg: str | None = None) -> None:
         """Calculate the transfer fees between a start date and an end date
         The provided dates should be presented in format 'YYYY-mm-dd'
 
@@ -90,13 +92,13 @@ class HelenCLIPrompt(Cmd):
         """
 
         try:
-            start_date, end_date = _parse_date_range(input)
+            start_date, end_date = _parse_date_range(arg)
             price = self.api_client.calculate_transfer_fees_between_dates(start_date, end_date)
             print(price)
         except ValueError:
             print("Please provide proper start and end dates in format 'YYYY-mm-dd'")
 
-    def do_calculate_total_consumption_between_dates(self, input: str | None = None) -> None:
+    def do_calculate_total_consumption_between_dates(self, arg: str | None = None) -> None:
         """Calculate the total electricity consumption between a start date and an end date
         The provided dates should be presented in format 'YYYY-mm-dd'
 
@@ -107,13 +109,13 @@ class HelenCLIPrompt(Cmd):
         """
 
         try:
-            start_date, end_date = _parse_date_range(input)
+            start_date, end_date = _parse_date_range(arg)
             consumption = self.api_client.get_total_consumption_between_dates(start_date, end_date)
             print(consumption)
         except ValueError:
             print("Please provide proper start and end dates in format 'YYYY-mm-dd'")
 
-    def do_calculate_spot_cost_between_dates(self, input: str | None = None) -> None:
+    def do_calculate_spot_cost_between_dates(self, arg: str | None = None) -> None:
         """Calculate the price of your Exchange Electricity (spot) contract between a start date and an end date
         The provided dates should be presented in format 'YYYY-mm-dd'
 
@@ -124,13 +126,13 @@ class HelenCLIPrompt(Cmd):
         """
 
         try:
-            start_date, end_date = _parse_date_range(input)
+            start_date, end_date = _parse_date_range(arg)
             price = self.api_client.calculate_total_costs_by_spot_prices_between_dates(start_date, end_date)
             print(price)
         except ValueError:
             print("Please provide proper start and end dates in format 'YYYY-mm-dd'")
 
-    def do_calculate_the_impact_of_usage_between_dates(self, input: str | None = None) -> None:
+    def do_calculate_the_impact_of_usage_between_dates(self, arg: str | None = None) -> None:
         """Calculate the impact of usage for Helen Smart Electricity Guarantee contract
         between a start date and an end date.
         The provided dates should be presented in format 'YYYY-mm-dd'
@@ -140,21 +142,21 @@ class HelenCLIPrompt(Cmd):
         """
 
         try:
-            start_date, end_date = _parse_date_range(input)
+            start_date, end_date = _parse_date_range(arg)
             impact = self.api_client.calculate_impact_of_usage_between_dates(start_date, end_date)
             print(impact)
         except ValueError:
             print("Please provide proper start and end dates in format 'YYYY-mm-dd'")
 
-    def do_get_monthly_measurements_json(self, input: str | None = None) -> None:
+    def do_get_monthly_measurements_json(self, arg: str | None = None) -> None:
         """Get the monthly electricity measurements of the on-going year as JSON"""
 
         year = date.today().year
         monthly_measurements = self.api_client.get_monthly_measurements_by_year(year)
-        monthly_measurements_json = json.dumps(monthly_measurements, default=lambda o: o.__dict__, indent=2)
+        monthly_measurements_json = json.dumps(monthly_measurements, default=_json_serializer, indent=2)
         print(monthly_measurements_json)
 
-    def do_get_daily_measurements_json(self, input: str | None = None) -> None:
+    def do_get_daily_measurements_json(self, arg: str | None = None) -> None:
         """Get the daily electricity measurements of the on-going month of the on-going year as JSON"""
 
         previous_month_last_day_date, wanted_month_last_day_date = get_month_date_range_by_date(date.today())
@@ -162,65 +164,65 @@ class HelenCLIPrompt(Cmd):
         daily_measurements = self.api_client.get_daily_measurements_between_dates(
             previous_month_last_day_date, wanted_month_last_day_date
         )
-        daily_measurements_json = json.dumps(daily_measurements, default=lambda o: o.__dict__, indent=2)
+        daily_measurements_json = json.dumps(daily_measurements, default=_json_serializer, indent=2)
         print(daily_measurements_json)
 
-    def do_get_contract_data_json(self, input: str | None = None) -> None:
+    def do_get_contract_data_json(self, arg: str | None = None) -> None:
         """Get all your contracts as JSON (includes terminated contracts)"""
 
         contract_data_json = self.api_client.get_contract_data_json()
-        contract_data_json_pretty = json.dumps(contract_data_json, default=lambda o: o.__dict__, indent=2)
+        contract_data_json_pretty = json.dumps(contract_data_json, default=_json_serializer, indent=2)
         print(contract_data_json_pretty)
 
-    def do_get_market_prices_json(self, input: str | None = None) -> None:
+    def do_get_market_prices_json(self, arg: str | None = None) -> None:
         """Get prices for the Market Price contract type as JSON"""
 
         price = self.helen_price_client.get_market_price_prices()
         price_json = json.dumps(price, default=_json_serializer, indent=2)
         print(price_json)
 
-    def do_get_exchange_margin_price_json(self, input: str | None = None) -> None:
+    def do_get_exchange_margin_price_json(self, arg: str | None = None) -> None:
         """Get margin price for the Exchange Electricity contract type as JSON"""
 
         price = self.helen_price_client.get_exchange_prices()
         price_json = json.dumps(price, default=_json_serializer, indent=2)
         print(price_json)
 
-    def do_get_contract_base_price(self, input: str | None = None) -> None:
+    def do_get_contract_base_price(self, arg: str | None = None) -> None:
         """Get the contract base price from your contract data.
         To see the whole contract data as JSON, use get_contract_data_json"""
 
         base_price = self.api_client.get_contract_base_price()
         print(base_price)
 
-    def do_get_contract_transfer_fee(self, input: str | None = None) -> None:
+    def do_get_contract_transfer_fee(self, arg: str | None = None) -> None:
         """Get the transfer fee price from your contract data.
         To see the whole contract data as JSON, use get_contract_data_json"""
 
         base_price = self.api_client.get_transfer_fee()
         print(base_price)
 
-    def do_get_contract_transfer_base_price(self, input: str | None = None) -> None:
+    def do_get_contract_transfer_base_price(self, arg: str | None = None) -> None:
         """Get the transfer base price from your contract data.
         To see the whole contract data as JSON, use get_contract_data_json"""
 
         base_price = self.api_client.get_transfer_base_price()
         print(base_price)
 
-    def do_get_api_access_token(self, input: str | None = None) -> None:
+    def do_get_api_access_token(self, arg: str | None = None) -> None:
         """Get your access token for the Oma Helen API."""
 
         access_token = self.api_client.get_api_access_token()
         print(access_token)
 
-    def do_get_contract_energy_unit_price(self, input: str | None = None) -> None:
+    def do_get_contract_energy_unit_price(self, arg: str | None = None) -> None:
         """Get the energy unit price from your contract data.
         To see the whole contract data as JSON, use get_contract_data_json"""
 
         contract_energy_unit_price = self.api_client.get_contract_energy_unit_price()
         print(contract_energy_unit_price)
 
-    def do_select_delivery_site(self, input: str | None = None) -> None:
+    def do_select_delivery_site(self, arg: str | None = None) -> None:
         """Select a delivery site to be used in the api_client.
 
         After setting, all measurement requests will be about this delivery site.
@@ -230,30 +232,30 @@ class HelenCLIPrompt(Cmd):
         """
 
         try:
-            self.api_client.select_delivery_site_if_valid_id(input)
+            self.api_client.select_delivery_site_if_valid_id(arg)
         except InvalidDeliverySiteException as e:
             print(e)
 
-    def do_get_all_delivery_sites(self, input: str | None = None) -> None:
+    def do_get_all_delivery_sites(self, arg: str | None = None) -> None:
         """Get all delivery site ids across your active contracts."""
 
         delivery_sites = self.api_client.get_all_delivery_site_ids()
         print(delivery_sites)
 
-    def do_get_all_gsrn_ids(self, input: str | None = None) -> None:
+    def do_get_all_gsrn_ids(self, arg: str | None = None) -> None:
         """Get all gsrn ids across your active contracts."""
 
         gsrn_ids = self.api_client.get_all_gsrn_ids()
         print(gsrn_ids)
 
-    def do_get_contract_type(self, input: str | None = None) -> None:
+    def do_get_contract_type(self, arg: str | None = None) -> None:
         """Get the contract type from your contract data.
         To see the whole contract data as JSON, use get_contract_data_json"""
 
         contract_type = self.api_client.get_contract_type()
         print(contract_type)
 
-    def do_get_spot_prices_chart_data(self, input: str | None = None) -> None:
+    def do_get_spot_prices_chart_data(self, arg: str | None = None) -> None:
         """Get spot prices from chart data API for a single day.
         Data includes 15-minute intervals with VAT and non-VAT prices.
         The provided date should be presented in format 'YYYY-mm-dd'
@@ -261,18 +263,18 @@ class HelenCLIPrompt(Cmd):
         Usage example:
         get_spot_prices_chart_data 2025-09-15
         """
-        if not input or not input.strip():
+        if not arg or not arg.strip():
             print("Please provide a date in format 'YYYY-mm-dd'")
         else:
             try:
-                target_date = datetime.strptime(str(input).strip(), '%Y-%m-%d').date()
+                target_date = datetime.strptime(str(arg).strip(), '%Y-%m-%d').date()
                 spot_prices = self.api_client.get_spot_prices_from_chart_data(target_date)
-                spot_prices_json = json.dumps(spot_prices, default=lambda o: o.__dict__, indent=2)
+                spot_prices_json = json.dumps(spot_prices, default=_json_serializer, indent=2)
                 print(spot_prices_json)
             except ValueError:
                 print("Please provide a valid date in format 'YYYY-mm-dd'")
 
-    def do_get_hourly_measurements_with_spot_prices_json(self, input: str | None = None) -> None:
+    def do_get_hourly_measurements_with_spot_prices_json(self, arg: str | None = None) -> None:
         """Get the measurements with spot prices for each hour between given dates
         The provided dates should be presented in format 'YYYY-mm-dd'
 
@@ -280,16 +282,16 @@ class HelenCLIPrompt(Cmd):
         get_hourly_measurements_with_spot_prices_json 2025-09-01 2025-09-08
         """
         try:
-            start_date, end_date = _parse_date_range(input)
+            start_date, end_date = _parse_date_range(arg)
             measurements_with_spot_prices = self.api_client.get_measurements_with_spot_prices(
                 start_date, end_date, RESOLUTION_HOUR
             )
-            measurements_json = json.dumps(measurements_with_spot_prices, default=lambda o: o.__dict__, indent=2)
+            measurements_json = json.dumps(measurements_with_spot_prices, default=_json_serializer, indent=2)
             print(measurements_json)
         except ValueError:
             print("Please provide proper start and end dates in format 'YYYY-mm-dd'")
 
-    def do_get_quarterly_measurements_with_spot_prices_json(self, input: str | None = None) -> None:
+    def do_get_quarterly_measurements_with_spot_prices_json(self, arg: str | None = None) -> None:
         """Get the measurements with spot prices for each quarter between given dates
         The provided dates should be presented in format 'YYYY-mm-dd'
 
@@ -297,11 +299,11 @@ class HelenCLIPrompt(Cmd):
         get_quarterly_measurements_with_spot_prices_json 2025-09-01 2025-09-08
         """
         try:
-            start_date, end_date = _parse_date_range(input)
+            start_date, end_date = _parse_date_range(arg)
             measurements_with_spot_prices = self.api_client.get_measurements_with_spot_prices(
                 start_date, end_date, RESOLUTION_QUARTER
             )
-            measurements_json = json.dumps(measurements_with_spot_prices, default=lambda o: o.__dict__, indent=2)
+            measurements_json = json.dumps(measurements_with_spot_prices, default=_json_serializer, indent=2)
             print(measurements_json)
         except ValueError:
             print("Please provide proper start and end dates in format 'YYYY-mm-dd'")
