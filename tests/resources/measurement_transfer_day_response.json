@@ -1,0 +1,32 @@
+{
+    "start": "2025-09-30T21:00:00Z",
+    "stop": "2025-10-04T21:00:00Z",
+    "resolution": "day",
+    "units": {
+        "ambient_temperature": "°C",
+        "ambient_humidity": "%",
+        "electricity_transfer": "kWh"
+    },
+    "ids": {
+        "ambient_temperature": "Helsinki Kaisaniemi",
+        "ambient_humidity": "Helsinki Kaisaniemi",
+        "electricity_transfer": "643007572123456789"
+    },
+    "data_start_times": {
+        "ambient_temperature": "2025-09-30T21:00:00Z",
+        "ambient_humidity": "2025-09-30T21:00:00Z",
+        "electricity_transfer": "2025-09-30T21:00:00Z"
+    },
+    "data_stop_times": {
+        "ambient_temperature": "2025-10-03T21:00:00Z",
+        "ambient_humidity": "2025-10-03T21:00:00Z",
+        "electricity_transfer": "2025-10-03T21:00:00Z"
+    },
+    "series": [
+        { "start": "2025-09-30T21:00:00Z", "stop": "2025-10-01T21:00:00Z", "ambient_temperature": 12.1, "ambient_humidity": 70.0, "electricity_transfer": 10.000 },
+        { "start": "2025-10-01T21:00:00Z", "stop": "2025-10-02T21:00:00Z", "ambient_temperature": 11.4, "ambient_humidity": 73.0, "electricity_transfer": 20.000 },
+        { "start": "2025-10-02T21:00:00Z", "stop": "2025-10-03T21:00:00Z", "ambient_temperature": 10.8, "ambient_humidity": 75.0, "electricity_transfer": 30.000 },
+        { "start": "2025-10-03T21:00:00Z", "stop": "2025-10-04T21:00:00Z", "ambient_temperature": null, "ambient_humidity": null, "electricity_transfer": null }
+    ],
+    "missing_series": []
+}

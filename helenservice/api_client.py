@@ -167,7 +167,13 @@ class HelenApiClient:
 
         gsrn_id = self._selected_contract["gsrn"]
 
-        chart_params = {"start": start_time, "stop": end_time, "resolution": resolution, "channel": "oh"}
+        # Channel selection depends on contract type:
+        # - "oh"  : energy/supply (default consumption)
+        # - "osv" : transfer-only (electricity-transfer domain)
+        contract_domain = self._selected_contract.get("domain")
+        channel = "osv" if contract_domain == "electricity-transfer" else "oh"
+
+        chart_params = {"start": start_time, "stop": end_time, "resolution": resolution, "channel": channel}
 
         chart_url = f"{self.HELEN_API_URL_V26}/chart-data/{gsrn_id}/electricity"
         response = requests.get(
@@ -176,6 +182,11 @@ class HelenApiClient:
             headers=self._api_request_headers(),
             timeout=HTTP_READ_TIMEOUT,
         )
+
+        if not response.ok:
+            raise InvalidApiResponseException(
+                f"Helen chart-data request failed with status {response.status_code}: {response.text}"
+            )
 
         return MeasurementsWithSpotPriceResponse(**response.json())
 
