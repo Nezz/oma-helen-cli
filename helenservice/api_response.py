@@ -50,6 +50,7 @@ class MeasurementsWithSpotPriceSeries:
         start: str,
         stop: str,
         electricity: float = None,
+        electricity_transfer: float = None,
         electricity_spot_prices_vat: float = None,
         electricity_spot_prices: float = None,
         ambient_temperature: float = None,
@@ -58,7 +59,7 @@ class MeasurementsWithSpotPriceSeries:
     ):
         self.start = start
         self.stop = stop
-        self.electricity = electricity
+        self.electricity = electricity if electricity is not None else electricity_transfer
         self.electricity_spot_prices_vat = electricity_spot_prices_vat
         self.electricity_spot_prices = electricity_spot_prices
         self.ambient_temperature = ambient_temperature
