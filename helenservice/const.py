@@ -6,12 +6,14 @@ RESOLUTION_QUARTER = "quarter"
 
 # Ubisecure OAuth 2.0 authorization endpoint and fixed parameters
 HELEN_LOGIN_API_VERSION = "v21"
+HELEN_CLIENT_ID = "239967c8-c1b3-4786-9cc9-035b181bfa75"
 HELEN_AUTH_ENDPOINT = "https://login.helen.fi/uas/oauth2/authorization"
+HELEN_TOKEN_ENDPOINT = "https://www.helen.fi/api/episerver/connect/token"
 HELEN_AUTH_PARAMS = {
     "response_type": "code",
-    "scope": "openid", # 'openid offline_access' for refresh-token
+    "scope": "openid offline_access",
     "template": "integrated",
-    "client_id": "239967c8-c1b3-4786-9cc9-035b181bfa75",
+    "client_id": HELEN_CLIENT_ID,
     "redirect_uri": "https://www.helen.fi/authResponse",
     "state": "s:a|l:fi",
     "locale": "fi",

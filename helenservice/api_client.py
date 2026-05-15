@@ -2,6 +2,8 @@ import logging
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+logger = logging.getLogger(__name__)
+
 import requests
 from cachetools import TTLCache, cachedmethod
 
@@ -22,8 +24,8 @@ class HelenApiClient:
     SPOT_PRICES_CHART_ENDPOINT = "/chart-data/electricity/spot-prices/daily"
     CONTRACT_ENDPOINT = "/contract/list"
 
-    _latest_login_time: datetime = None
     _session: HelenSession = None
+    _refresh_token: str = None
     _margin: float = None
     _selected_delivery_site_id: str = None
     _selected_contract = None
@@ -35,22 +37,26 @@ class HelenApiClient:
         self._cache = TTLCache(maxsize=128, ttl=3600)
 
     def login_and_init(self, username, password):
-        """Login to Oma Helen. Creates a new session when called."""
-        self._session = HelenSession().login(username, password)
-        self._latest_login_time = datetime.now()
+        """Login to Oma Helen. Uses refresh token if available, falls back to full login."""
+        session = HelenSession()
+        if self._refresh_token and session.refresh(self._refresh_token):
+            logger.debug("Session resumed using refresh token")
+            self._session = session
+            self._refresh_token = session.get_refresh_token() or self._refresh_token
+        else:
+            self._session = session.login(username, password)
         self._refresh_api_client_state()
         return self
 
     def is_session_valid(self):
-        """If the latest login has happened within the last hour, then the session should be valid and ready to go"""
-        if self._latest_login_time is None:
+        """Return True if the current session has a valid, non-expired access token."""
+        if self._session is None:
             return False
-        now = datetime.now()
-        is_latest_login_within_hour = now - timedelta(hours=1) <= self._latest_login_time <= now
-        return is_latest_login_within_hour
+        return self._session.is_token_valid()
 
     def close(self):
         if self._session is not None:
+            self._refresh_token = self._session.get_refresh_token()
             self._session.close()
 
     def _get_hourly_consumption_costs(self, start_date: date, end_date: date) -> list:
