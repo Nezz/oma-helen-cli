@@ -4,38 +4,27 @@ import logging
 import re
 
 from bs4 import BeautifulSoup
-from requests import Request, Response, Session
+from requests import Response, Session
 
 from helenservice.api_exceptions import HelenAuthenticationException
 
-from .const import HTTP_READ_TIMEOUT, MAX_REDIRECTS
+from .const import HELEN_AUTH_ENDPOINT, HELEN_AUTH_PARAMS, HELEN_LOGIN_API_VERSION, HTTP_READ_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
 
 class HelenSession:
     HELEN_LOGIN_HOST = "https://login.helen.fi"
-    TUPAS_LOGIN_URL = "https://www.helen.fi/hcc/TupasLoginFrame?service=account&locale=fi"
-    LOGIN_API_VERSION = "v21"
 
     def __init__(self) -> None:
         self._session: Session | None = None
 
     def login(self, username: str, password: str) -> HelenSession:
-        """Login to Oma Helen web and follow redirects until the main page is reached.
-        Will save the necessary `access-token` into a Session, which can be accessed
-        with the `get_access_token()` method.
-
-        :param username: The username for Oma Helen web service.
-        :param password: The password for Oma Helen web service.
-        :return: HelenSession.
-        :rtype: .HelenSession
-        """
+        """Login to Oma Helen and extract the access-token cookie."""
         self._session = Session()
         logger.debug("Logging in to Oma Helen")
         try:
-            login_response = self._send_login_request(username, password)
-            self._proceed_to_main_page_from_login_response(login_response)
+            self._do_full_login(username, password)
         except Exception as exception:
             logger.exception("Login to Oma Helen failed. Check your credentials!")
             self._session.close()
@@ -45,105 +34,96 @@ class HelenSession:
         return self
 
     def get_access_token(self) -> str:
-        """Get the access-token to use the Helen API. It is required to login before the
-        token can be accessed
-        """
+        """Get the access-token to use the Helen API."""
         if self._session is None:
             raise HelenAuthenticationException("The session is not active. Log in first")
-
         access_token = self._session.cookies.get("access-token")
-
         if access_token is None:
             raise HelenAuthenticationException("No access token found. Log in first")
-
         return access_token
 
     def close(self) -> None:
-        """Close down the session for the Oma Helen web service"""
+        """Close the session for the Oma Helen web service."""
         if self._session is not None:
             self._session.close()
             self._session = None
             logger.debug("HelenSession was closed")
 
-    def _follow_redirects(self, response: Response) -> Response:
-        redirect_count = 0
-        while redirect_count < MAX_REDIRECTS:
-            location_header = response.headers.get("Location") or response.headers.get("location")
-            if location_header is None:
-                return response
+    def _do_full_login(self, username: str, password: str) -> None:
+        """Drive the full Ubisecure OAuth login flow:
+        auth endpoint → login form → credentials → Continue form → token exchange.
+        """
+        # Step 1: POST to auth endpoint → login form
+        auth_soup = self._post_and_parse(HELEN_AUTH_ENDPOINT, params=HELEN_AUTH_PARAMS)
+        login_url = self.HELEN_LOGIN_HOST + self._get_html_form_url(auth_soup)
+        logger.debug("Login form URL: %s", login_url)
 
-            if self._session is None:
-                raise HelenAuthenticationException("Session is None while following redirects")
+        # Step 2: POST credentials → Continue form (OAuth code + state hidden fields)
+        credentials_soup = self._post_and_parse(login_url, data={"username": username, "password": password})
 
-            response = self._session.get(location_header, timeout=HTTP_READ_TIMEOUT)
-            redirect_count += 1
+        # Step 3: Submit Continue form → page with a link
+        proceed_response = self._get_with_oauth_code(credentials_soup)
+        logger.debug("Proceed: status=%s url=%s", proceed_response.status_code, proceed_response.url)
 
-        raise HelenAuthenticationException(f"Max redirects ({MAX_REDIRECTS}) exceeded")
+        # Step 4: Follow the link → second OAuth code exchange form
+        proceed_soup = BeautifulSoup(proceed_response.text, "html.parser")
+        auth2_url = self._fix_url(self._get_html_link_url(proceed_soup))
+        logger.debug("Auth2 URL: %s", auth2_url)
 
-    def _make_url_request(
-        self, url: str, method: str, data: dict[str, str] | None = None, params: dict[str, str] | None = None
-    ) -> Response:
-        request = Request(method, url)
+        auth2_soup = self._get_and_parse(auth2_url)
 
-        if data is not None:
-            request.data = data
-        if params is not None:
-            request.params = params
-        prepared_request = self._session.prepare_request(request)
+        # Step 5: Submit second OAuth code exchange → access-token cookie is set
+        final_response = self._get_with_oauth_code(auth2_soup)
+        logger.debug("Final: status=%s url=%s", final_response.status_code, final_response.url)
 
-        response = self._session.send(prepared_request, timeout=HTTP_READ_TIMEOUT)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Cookies after login: %s", {c.name: c.domain for c in self._session.cookies})
 
-        response = self._follow_redirects(response)
+        if self._session.cookies.get("access-token") is None:
+            raise HelenAuthenticationException(
+                "Login failed: no access-token cookie received. Check your credentials."
+            )
 
-        return response
+    def _post_and_parse(self, url: str, *, data: dict | None = None, params: dict | None = None) -> BeautifulSoup:
+        response = self._session.post(url, data=data, params=params, timeout=HTTP_READ_TIMEOUT)
+        logger.debug("POST %s → status=%s url=%s", url, response.status_code, response.url)
+        return BeautifulSoup(response.text, "html.parser")
 
-    def _get_html_input_value(self, soup: BeautifulSoup, attribute_name: str) -> str:
-        return soup.find("input", {"name": attribute_name}).get("value")
+    def _get_and_parse(self, url: str) -> BeautifulSoup:
+        response = self._session.get(url, timeout=HTTP_READ_TIMEOUT)
+        logger.debug("GET %s → status=%s url=%s", url, response.status_code, response.url)
+        return BeautifulSoup(response.text, "html.parser")
+
+    def _get_with_oauth_code(self, soup: BeautifulSoup) -> Response:
+        """GET the form action URL with OAuth code+state extracted from hidden inputs."""
+        url = self._get_html_form_url(soup)
+        code = self._get_html_input_value(soup, "code")
+        state = self._get_html_input_value(soup, "state")
+        return self._session.get(url, params={"code": code, "state": state}, timeout=HTTP_READ_TIMEOUT)
+
+    def _fix_url(self, url: str) -> str:
+        """Normalise a URL from the OAuth flow that may carry a stale API version
+        or the legacy 'omahelen' domain instead of 'oma.helen'.
+        """
+        url = re.sub(r"/v\d+/", f"/{HELEN_LOGIN_API_VERSION}/", url)
+        return url.replace("omahelen", "oma.helen")
 
     def _get_html_form_url(self, soup: BeautifulSoup) -> str:
-        return soup.find("form").attrs['action']
+        form = soup.find("form")
+        if form is None:
+            raise HelenAuthenticationException("Login flow broken: expected a form but none was found in response")
+        return form.attrs["action"]
 
-    def _get_html_form_method(self, soup: BeautifulSoup) -> str:
-        return soup.find("form").attrs["method"]
+    def _get_html_link_url(self, soup: BeautifulSoup) -> str:
+        link = soup.find("a")
+        if link is None:
+            raise HelenAuthenticationException("Login flow broken: expected a link but none was found in response")
+        return link.attrs["href"]
 
-    def _get_tupas_response(self) -> Response:
-        return self._session.get(self.TUPAS_LOGIN_URL, timeout=HTTP_READ_TIMEOUT)
-
-    def _send_login_request(self, username: str, password: str) -> Response:
-        tupas_response = self._get_tupas_response()
-        tupas_soup = BeautifulSoup(tupas_response.text, "html.parser")
-        authorization_url = self._get_html_form_url(tupas_soup)
-        authorization_form_method = self._get_html_form_method(tupas_soup)
-        authorization_response = self._make_url_request(authorization_url, authorization_form_method)
-        authorization_soup = BeautifulSoup(authorization_response.text, "html.parser")
-        login_url = self.HELEN_LOGIN_HOST + self._get_html_form_url(authorization_soup)
-
-        login_payload = {"username": username, "password": password}
-        return self._make_url_request(login_url, "POST", login_payload)
-
-    def _fix_oma_helen_api_url(self, url: str) -> str:
-        fixed_url = re.sub(r"\/v\d+\/", "/" + self.LOGIN_API_VERSION + "/", url)
-        return fixed_url.replace("omahelen", "oma.helen")
-
-    def _proceed_to_main_page_from_login_response(self, response: Response) -> None:
-        access_granted_soup = BeautifulSoup(response.text, "html.parser")
-        continue_url = self._get_html_form_url(access_granted_soup)
-        continue_param_code = self._get_html_input_value(access_granted_soup, "code")
-        continue_param_state = self._get_html_input_value(access_granted_soup, "state")
-        continue_params = {"code": continue_param_code, "state": continue_param_state}
-        proceed_link_page_response = self._make_url_request(continue_url, "GET", params=continue_params)
-
-        proceed_link_page_soup = BeautifulSoup(proceed_link_page_response.text, "html.parser")
-        proceed_link_page_link_url = proceed_link_page_soup.find("a").attrs['href']
-        auth_response = self._make_url_request(self._fix_oma_helen_api_url(proceed_link_page_link_url), "GET")
-
-        auth_response_soup = BeautifulSoup(auth_response.text, "html.parser")
-        auth_response_url = self._get_html_form_url(auth_response_soup)
-        auth_response_param_code = self._get_html_input_value(auth_response_soup, "code")
-        auth_response_param_state = self._get_html_input_value(auth_response_soup, "state")
-        auth_response_params = {
-            "code": auth_response_param_code,
-            "state": auth_response_param_state,
-        }
-
-        self._make_url_request(auth_response_url, "GET", params=auth_response_params)
+    def _get_html_input_value(self, soup: BeautifulSoup, name: str) -> str:
+        element = soup.find("input", {"name": name})
+        if element is None:
+            raise HelenAuthenticationException(
+                f"Login flow broken: expected hidden input '{name}' but it was not found in response"
+            )
+        return element.get("value")
