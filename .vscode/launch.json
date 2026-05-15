@@ -10,6 +10,22 @@
             "request": "launch",
             "module": "helenservice.cli",
             "justMyCode": true
+        },
+        {
+            "name": "pytest: all tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["-v"],
+            "justMyCode": true
+        },
+        {
+            "name": "pytest: current file",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["${file}", "-v"],
+            "justMyCode": true
         }
     ]
 }
