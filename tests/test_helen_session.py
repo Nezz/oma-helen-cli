@@ -1,10 +1,13 @@
+import base64
+import json
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 from bs4 import BeautifulSoup
 
 from helenservice.api_exceptions import HelenAuthenticationException
-from helenservice.const import HELEN_AUTH_ENDPOINT, HELEN_AUTH_PARAMS, HTTP_READ_TIMEOUT
+from helenservice.const import HELEN_AUTH_ENDPOINT, HELEN_AUTH_PARAMS, HELEN_CLIENT_ID, HELEN_TOKEN_ENDPOINT, HTTP_READ_TIMEOUT
 from helenservice.helen_session import HelenSession
 
 
@@ -142,3 +145,116 @@ class TestLogin:
         session = HelenSession()
         with pytest.raises(HelenAuthenticationException, match="not active"):
             session.get_access_token()
+
+
+def _make_jwt(exp: int) -> str:
+    header = base64.urlsafe_b64encode(b'{"alg":"HS256"}').rstrip(b"=").decode()
+    payload = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).rstrip(b"=").decode()
+    return f"{header}.{payload}.sig"
+
+
+class TestIsTokenValid:
+    def test_returns_false_when_no_session(self):
+        assert HelenSession().is_token_valid() is False
+
+    def test_returns_false_when_no_access_token_cookie(self):
+        session = HelenSession()
+        session._session = MagicMock()
+        session._session.cookies.get.return_value = None
+        assert session.is_token_valid() is False
+
+    def test_returns_true_when_token_not_expired(self):
+        session = HelenSession()
+        session._session = MagicMock()
+        session._session.cookies.get.return_value = _make_jwt(int(time.time()) + 3600)
+        assert session.is_token_valid() is True
+
+    def test_returns_false_when_token_is_expired(self):
+        session = HelenSession()
+        session._session = MagicMock()
+        session._session.cookies.get.return_value = _make_jwt(int(time.time()) - 1)
+        assert session.is_token_valid() is False
+
+    def test_returns_false_on_malformed_token(self):
+        session = HelenSession()
+        session._session = MagicMock()
+        session._session.cookies.get.return_value = "not.a.jwt"
+        assert session.is_token_valid() is False
+
+
+class TestGetRefreshToken:
+    def test_returns_none_when_no_session(self):
+        session = HelenSession()
+        assert session.get_refresh_token() is None
+
+    def test_returns_cookie_value(self):
+        session = HelenSession()
+        session._session = MagicMock()
+        session._session.cookies.get.return_value = "rt-abc"
+        assert session.get_refresh_token() == "rt-abc"
+        session._session.cookies.get.assert_called_once_with("refresh-token")
+
+
+class TestRefresh:
+    def _mock_token_response(self, access_token="new-tok", refresh_token="new-rt", status=200):
+        r = MagicMock()
+        r.ok = status < 400
+        r.status_code = status
+        r.json.return_value = {k: v for k, v in [("access_token", access_token), ("refresh_token", refresh_token)] if v}
+        return r
+
+    def test_success_sets_access_token_and_returns_true(self):
+        session = HelenSession()
+        with patch("helenservice.helen_session.Session") as mock_session_cls:
+            mock_requests = MagicMock()
+            mock_session_cls.return_value = mock_requests
+            mock_requests.post.return_value = self._mock_token_response()
+            mock_requests.cookies.get.return_value = "new-tok"
+
+            result = session.refresh("old-rt")
+
+        assert result is True
+        post_call = mock_requests.post.call_args
+        assert post_call.args[0] == HELEN_TOKEN_ENDPOINT
+        assert post_call.kwargs["data"]["grant_type"] == "refresh_token"
+        assert post_call.kwargs["data"]["refresh_token"] == "old-rt"
+        assert post_call.kwargs["data"]["client_id"] == HELEN_CLIENT_ID
+
+    def test_failure_on_non_ok_status_returns_false(self):
+        session = HelenSession()
+        with patch("helenservice.helen_session.Session") as mock_session_cls:
+            mock_requests = MagicMock()
+            mock_session_cls.return_value = mock_requests
+            mock_requests.post.return_value = self._mock_token_response(status=401)
+
+            result = session.refresh("old-rt")
+
+        assert result is False
+        assert session._session is None
+
+    def test_failure_on_missing_access_token_returns_false(self):
+        session = HelenSession()
+        with patch("helenservice.helen_session.Session") as mock_session_cls:
+            mock_requests = MagicMock()
+            mock_session_cls.return_value = mock_requests
+            r = MagicMock()
+            r.ok = True
+            r.json.return_value = {}
+            mock_requests.post.return_value = r
+
+            result = session.refresh("old-rt")
+
+        assert result is False
+        assert session._session is None
+
+    def test_failure_on_exception_returns_false(self):
+        session = HelenSession()
+        with patch("helenservice.helen_session.Session") as mock_session_cls:
+            mock_requests = MagicMock()
+            mock_session_cls.return_value = mock_requests
+            mock_requests.post.side_effect = ConnectionError("network down")
+
+            result = session.refresh("old-rt")
+
+        assert result is False
+        assert session._session is None
