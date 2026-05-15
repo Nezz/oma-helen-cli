@@ -8,7 +8,7 @@ RESOLUTION_QUARTER = "quarter"
 HELEN_LOGIN_API_VERSION = "v21"
 HELEN_CLIENT_ID = "239967c8-c1b3-4786-9cc9-035b181bfa75"
 HELEN_AUTH_ENDPOINT = "https://login.helen.fi/uas/oauth2/authorization"
-HELEN_TOKEN_ENDPOINT = "https://www.helen.fi/api/episerver/connect/token"
+HELEN_SESSION_RENEWAL_URL = "https://api.oma.helen.fi/v21/login?redirect=https://web.oma.helen.fi/personal&lang=fi"
 HELEN_AUTH_PARAMS = {
     "response_type": "code",
     "scope": "openid offline_access",

@@ -7,7 +7,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from helenservice.api_exceptions import HelenAuthenticationException
-from helenservice.const import HELEN_AUTH_ENDPOINT, HELEN_AUTH_PARAMS, HELEN_CLIENT_ID, HELEN_TOKEN_ENDPOINT, HTTP_READ_TIMEOUT
+from helenservice.const import HELEN_AUTH_ENDPOINT, HELEN_AUTH_PARAMS, HELEN_SESSION_RENEWAL_URL, HTTP_READ_TIMEOUT
 from helenservice.helen_session import HelenSession
 
 
@@ -182,67 +182,47 @@ class TestIsTokenValid:
         assert session.is_token_valid() is False
 
 
-class TestGetRefreshToken:
-    def test_returns_none_when_no_session(self):
-        session = HelenSession()
-        assert session.get_refresh_token() is None
+class TestGetAllCookies:
+    def test_returns_empty_when_no_session(self):
+        assert HelenSession().get_all_cookies() == []
 
-    def test_returns_cookie_value(self):
+    def test_returns_cookie_tuples(self):
         session = HelenSession()
-        session._session = MagicMock()
-        session._session.cookies.get.return_value = "rt-abc"
-        assert session.get_refresh_token() == "rt-abc"
-        session._session.cookies.get.assert_called_once_with("refresh-token")
+        mock_requests = MagicMock()
+        session._session = mock_requests
+        mock_cookie = MagicMock()
+        mock_cookie.name = "access-token"
+        mock_cookie.value = "tok-abc"
+        mock_cookie.domain = "www.helen.fi"
+        mock_requests.cookies.__iter__ = MagicMock(return_value=iter([mock_cookie]))
+        assert session.get_all_cookies() == [("access-token", "tok-abc", "www.helen.fi")]
 
 
 class TestRefresh:
-    def _mock_token_response(self, access_token="new-tok", refresh_token="new-rt", status=200):
-        r = MagicMock()
-        r.ok = status < 400
-        r.status_code = status
-        r.json.return_value = {k: v for k, v in [("access_token", access_token), ("refresh_token", refresh_token)] if v}
-        return r
+    def test_returns_false_for_empty_cookies(self):
+        assert HelenSession().refresh([]) is False
 
-    def test_success_sets_access_token_and_returns_true(self):
+    def test_success_returns_true_when_access_token_cookie_present(self):
         session = HelenSession()
         with patch("helenservice.helen_session.Session") as mock_session_cls:
             mock_requests = MagicMock()
             mock_session_cls.return_value = mock_requests
-            mock_requests.post.return_value = self._mock_token_response()
             mock_requests.cookies.get.return_value = "new-tok"
 
-            result = session.refresh("old-rt")
+            result = session.refresh([("refresh-token", "rt-abc", "www.helen.fi")])
 
         assert result is True
-        post_call = mock_requests.post.call_args
-        assert post_call.args[0] == HELEN_TOKEN_ENDPOINT
-        assert post_call.kwargs["data"]["grant_type"] == "refresh_token"
-        assert post_call.kwargs["data"]["refresh_token"] == "old-rt"
-        assert post_call.kwargs["data"]["client_id"] == HELEN_CLIENT_ID
+        get_call = mock_requests.get.call_args
+        assert get_call.args[0] == HELEN_SESSION_RENEWAL_URL
 
-    def test_failure_on_non_ok_status_returns_false(self):
+    def test_failure_when_no_access_token_cookie_after_get(self):
         session = HelenSession()
         with patch("helenservice.helen_session.Session") as mock_session_cls:
             mock_requests = MagicMock()
             mock_session_cls.return_value = mock_requests
-            mock_requests.post.return_value = self._mock_token_response(status=401)
+            mock_requests.cookies.get.return_value = None
 
-            result = session.refresh("old-rt")
-
-        assert result is False
-        assert session._session is None
-
-    def test_failure_on_missing_access_token_returns_false(self):
-        session = HelenSession()
-        with patch("helenservice.helen_session.Session") as mock_session_cls:
-            mock_requests = MagicMock()
-            mock_session_cls.return_value = mock_requests
-            r = MagicMock()
-            r.ok = True
-            r.json.return_value = {}
-            mock_requests.post.return_value = r
-
-            result = session.refresh("old-rt")
+            result = session.refresh([("refresh-token", "rt-abc", "www.helen.fi")])
 
         assert result is False
         assert session._session is None
@@ -252,9 +232,9 @@ class TestRefresh:
         with patch("helenservice.helen_session.Session") as mock_session_cls:
             mock_requests = MagicMock()
             mock_session_cls.return_value = mock_requests
-            mock_requests.post.side_effect = ConnectionError("network down")
+            mock_requests.get.side_effect = ConnectionError("network down")
 
-            result = session.refresh("old-rt")
+            result = session.refresh([("refresh-token", "rt-abc", "www.helen.fi")])
 
         assert result is False
         assert session._session is None

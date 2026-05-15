@@ -25,7 +25,7 @@ class HelenApiClient:
     CONTRACT_ENDPOINT = "/contract/list"
 
     _session: HelenSession = None
-    _refresh_token: str = None
+    _saved_cookies: list = None
     _margin: float = None
     _selected_delivery_site_id: str = None
     _selected_contract = None
@@ -37,12 +37,12 @@ class HelenApiClient:
         self._cache = TTLCache(maxsize=128, ttl=3600)
 
     def login_and_init(self, username, password):
-        """Login to Oma Helen. Uses refresh token if available, falls back to full login."""
+        """Login to Oma Helen. Tries cookie-based session renewal first, falls back to full login."""
         session = HelenSession()
-        if self._refresh_token and session.refresh(self._refresh_token):
-            logger.debug("Session resumed using refresh token")
+        if self._saved_cookies and session.refresh(self._saved_cookies):
+            logger.debug("Session resumed via cookie-based refresh")
             self._session = session
-            self._refresh_token = session.get_refresh_token() or self._refresh_token
+            self._saved_cookies = session.get_all_cookies()
         else:
             self._session = session.login(username, password)
         self._refresh_api_client_state()
@@ -56,8 +56,9 @@ class HelenApiClient:
 
     def close(self):
         if self._session is not None:
-            self._refresh_token = self._session.get_refresh_token()
+            self._saved_cookies = self._session.get_all_cookies()
             self._session.close()
+            self._session = None
 
     def _get_hourly_consumption_costs(self, start_date: date, end_date: date) -> list:
         series = self.get_measurements_with_spot_prices(start_date, end_date, RESOLUTION_HOUR).series

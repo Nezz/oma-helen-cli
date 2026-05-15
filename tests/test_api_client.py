@@ -165,6 +165,19 @@ class TestHelenApiClient:
         # Sum of non-null electricity_transfer values from the fixture (10 + 20 + 30)
         assert total == pytest.approx(60.0)
 
+    def test_close_saves_cookies_and_nulls_session(self, api_client):
+        api_client._session.get_all_cookies.return_value = [("access-token", "tok", "www.helen.fi")]
+        api_client.close()
+        assert api_client._saved_cookies == [("access-token", "tok", "www.helen.fi")]
+        assert api_client._session is None
+
+    def test_double_close_preserves_saved_cookies(self, api_client):
+        """Second close() (e.g. from _login_helen_api_if_needed) must not overwrite _saved_cookies."""
+        api_client._session.get_all_cookies.return_value = [("access-token", "tok", "www.helen.fi")]
+        api_client.close()   # saves cookies, nulls session
+        api_client.close()   # session is None — must be a no-op
+        assert api_client._saved_cookies == [("access-token", "tok", "www.helen.fi")]
+
     # ------------------------------------------------------------------
     # Test helpers
     # ------------------------------------------------------------------

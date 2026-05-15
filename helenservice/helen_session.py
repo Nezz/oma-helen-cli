@@ -11,7 +11,7 @@ from requests import Response, Session
 
 from helenservice.api_exceptions import HelenAuthenticationException
 
-from .const import HELEN_AUTH_ENDPOINT, HELEN_AUTH_PARAMS, HELEN_CLIENT_ID, HELEN_LOGIN_API_VERSION, HELEN_TOKEN_ENDPOINT, HTTP_READ_TIMEOUT
+from .const import HELEN_AUTH_ENDPOINT, HELEN_AUTH_PARAMS, HELEN_LOGIN_API_VERSION, HELEN_SESSION_RENEWAL_URL, HTTP_READ_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -58,41 +58,30 @@ class HelenSession:
         except Exception:
             return False
 
-    def get_refresh_token(self) -> str | None:
-        """Get the refresh-token cookie if present."""
+    def get_all_cookies(self) -> list[tuple[str, str, str]]:
+        """Return all session cookies as (name, value, domain) tuples."""
         if self._session is None:
-            return None
-        return self._session.cookies.get("refresh-token")
+            return []
+        return [(c.name, c.value, c.domain) for c in self._session.cookies]
 
-    def refresh(self, refresh_token: str) -> bool:
-        """Exchange a refresh token for a new access token. Returns True on success, False on any failure."""
+    def refresh(self, cookies: list[tuple[str, str, str]]) -> bool:
+        """Try to renew the access token by replaying saved cookies. Returns True on success."""
+        if not cookies:
+            return False
         self._session = Session()
         try:
-            response = self._session.post(
-                HELEN_TOKEN_ENDPOINT,
-                data={"grant_type": "refresh_token", "refresh_token": refresh_token, "client_id": HELEN_CLIENT_ID},
-                timeout=HTTP_READ_TIMEOUT,
-            )
-            if not response.ok:
-                logger.debug("Token refresh failed: status=%s", response.status_code)
+            for name, value, domain in cookies:
+                self._session.cookies.set(name, value, domain=domain)
+            self._session.get(HELEN_SESSION_RENEWAL_URL, timeout=HTTP_READ_TIMEOUT)
+            if not self._session.cookies.get("access-token"):
+                logger.debug("Cookie-based refresh failed: no access-token cookie received")
                 self._session.close()
                 self._session = None
                 return False
-            token_data = response.json()
-            new_access_token = token_data.get("access_token")
-            if not new_access_token:
-                logger.debug("Token refresh response missing access_token")
-                self._session.close()
-                self._session = None
-                return False
-            self._session.cookies.set("access-token", new_access_token, domain="omahelen.fi")
-            new_refresh_token = token_data.get("refresh_token")
-            if new_refresh_token:
-                self._session.cookies.set("refresh-token", new_refresh_token, domain="helen.fi")
-            logger.debug("Token refresh successful")
+            logger.debug("Cookie-based refresh successful")
             return True
         except Exception:
-            logger.debug("Token refresh failed with exception", exc_info=True)
+            logger.debug("Cookie-based refresh failed with exception", exc_info=True)
             if self._session:
                 self._session.close()
             self._session = None
