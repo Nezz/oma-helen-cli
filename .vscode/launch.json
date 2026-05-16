@@ -9,6 +9,7 @@
             "type": "debugpy",
             "request": "launch",
             "module": "helenservice.cli",
+            "args": ["--debug"],
             "justMyCode": true
         },
         {
