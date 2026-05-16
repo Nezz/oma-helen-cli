@@ -203,12 +203,13 @@ class TestRefresh:
     def test_returns_false_for_empty_cookies(self):
         assert HelenSession().refresh([]) is False
 
-    def test_success_returns_true_when_access_token_cookie_present(self):
+    def test_success_returns_true_when_http_ok_and_not_redirected_to_login(self):
         session = HelenSession()
         with patch("helenservice.helen_session.Session") as mock_session_cls:
             mock_requests = MagicMock()
             mock_session_cls.return_value = mock_requests
-            mock_requests.cookies.get.return_value = "new-tok"
+            mock_requests.get.return_value.ok = True
+            mock_requests.get.return_value.url = "https://web.oma.helen.fi/personal"
 
             result = session.refresh([
                 ("refresh-token", "rt-abc", ".oma.helen.fi", "/"),
@@ -221,17 +222,65 @@ class TestRefresh:
         set_calls = [call.args[0] for call in mock_requests.cookies.set.call_args_list]
         assert "access-token" in set_calls
 
-    def test_failure_when_no_access_token_cookie_after_get(self):
+    def test_failure_on_http_error_returns_false(self):
         session = HelenSession()
         with patch("helenservice.helen_session.Session") as mock_session_cls:
             mock_requests = MagicMock()
             mock_session_cls.return_value = mock_requests
-            mock_requests.cookies.get.return_value = None
+            mock_requests.get.return_value.ok = False
+            mock_requests.get.return_value.status_code = 401
+            mock_requests.get.return_value.url = "https://api.oma.helen.fi/v21/login"
 
             result = session.refresh([("refresh-token", "rt-abc", ".oma.helen.fi", "/")])
 
         assert result is False
         assert session._session is None
+
+    def test_failure_when_redirected_to_login_form(self):
+        session = HelenSession()
+        with patch("helenservice.helen_session.Session") as mock_session_cls:
+            mock_requests = MagicMock()
+            mock_session_cls.return_value = mock_requests
+            mock_requests.get.return_value.ok = True
+            mock_requests.get.return_value.status_code = 200
+            mock_requests.get.return_value.url = "https://login.helen.fi/uas/authn/view"
+            mock_requests.get.return_value.text = "<html><form><input name='username'/></form></html>"
+
+            result = session.refresh([("refresh-token", "rt-abc", ".oma.helen.fi", "/")])
+
+        assert result is False
+        assert session._session is None
+
+    def test_success_submits_code_exchange_when_landing_at_login_host(self):
+        session = HelenSession()
+        with patch("helenservice.helen_session.Session") as mock_session_cls:
+            mock_requests = MagicMock()
+            mock_session_cls.return_value = mock_requests
+
+            code_html = (
+                '<form action="https://api.oma.helen.fi/v20/">'
+                '<input name="code" value="abc"/>'
+                '<input name="state" value="xyz"/>'
+                "</form>"
+            )
+            first = MagicMock()
+            first.ok = True
+            first.url = "https://login.helen.fi/uas/authn/view"
+            first.text = code_html
+
+            second = MagicMock()
+            second.ok = True
+            second.url = "https://web.oma.helen.fi/personal"
+
+            mock_requests.get.side_effect = [first, second]
+
+            result = session.refresh([("refresh-token", "rt-abc", ".oma.helen.fi", "/")])
+
+        assert result is True
+        assert mock_requests.get.call_count == 2
+        exchange_call = mock_requests.get.call_args_list[1]
+        assert exchange_call.args[0] == "https://api.oma.helen.fi/v20/"
+        assert exchange_call.kwargs["params"] == {"code": "abc", "state": "xyz"}
 
     def test_failure_on_exception_returns_false(self):
         session = HelenSession()

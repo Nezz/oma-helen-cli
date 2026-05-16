@@ -75,13 +75,22 @@ class HelenSession:
             for name, value, domain, path in cookies:
                 self._session.cookies.set(name, value, domain=domain, path=path)
             response = self._session.get(HELEN_SESSION_RENEWAL_URL, timeout=HTTP_READ_TIMEOUT)
-            logger.debug("Refresh: final URL after redirects: %s", response.url)
-            logger.debug("Refresh: cookies after GET: %s", {c.name: c.domain for c in self._session.cookies})
-            if not self._session.cookies.get("access-token"):
-                logger.debug("Cookie-based refresh failed: no access-token cookie received")
+            logger.debug("Refresh: URL after initial GET: %s", response.url)
+            if not response.ok:
+                logger.debug("Cookie-based refresh failed: HTTP %s", response.status_code)
                 self._session.close()
                 self._session = None
                 return False
+            if self.HELEN_LOGIN_HOST in response.url:
+                soup = BeautifulSoup(response.text, "html.parser")
+                if soup.find("input", {"name": "code"}) is None:
+                    logger.debug("Cookie-based refresh failed: session expired, redirected to login form at %s", response.url)
+                    self._session.close()
+                    self._session = None
+                    return False
+                response = self._get_with_oauth_code(soup)
+                logger.debug("Refresh: final URL after code exchange: %s", response.url)
+            logger.debug("Refresh: cookies after refresh: %s", {c.name: c.domain for c in self._session.cookies})
             logger.debug("Cookie-based refresh successful")
             return True
         except Exception:
