@@ -58,21 +58,25 @@ class HelenSession:
         except Exception:
             return False
 
-    def get_all_cookies(self) -> list[tuple[str, str, str]]:
-        """Return all session cookies as (name, value, domain) tuples."""
+    def get_all_cookies(self) -> list[tuple[str, str, str, str]]:
+        """Return all session cookies as (name, value, domain, path) tuples."""
         if self._session is None:
             return []
-        return [(c.name, c.value, c.domain) for c in self._session.cookies]
+        return [(c.name, c.value, c.domain, c.path) for c in self._session.cookies]
 
-    def refresh(self, cookies: list[tuple[str, str, str]]) -> bool:
+    def refresh(self, cookies: list[tuple[str, str, str, str]]) -> bool:
         """Try to renew the access token by replaying saved cookies. Returns True on success."""
         if not cookies:
             return False
         self._session = Session()
         try:
-            for name, value, domain in cookies:
-                self._session.cookies.set(name, value, domain=domain)
-            self._session.get(HELEN_SESSION_RENEWAL_URL, timeout=HTTP_READ_TIMEOUT)
+            injected = [(n, d, p) for n, _, d, p in cookies]
+            logger.debug("Refresh: injecting cookies %s", injected)
+            for name, value, domain, path in cookies:
+                self._session.cookies.set(name, value, domain=domain, path=path)
+            response = self._session.get(HELEN_SESSION_RENEWAL_URL, timeout=HTTP_READ_TIMEOUT)
+            logger.debug("Refresh: final URL after redirects: %s", response.url)
+            logger.debug("Refresh: cookies after GET: %s", {c.name: c.domain for c in self._session.cookies})
             if not self._session.cookies.get("access-token"):
                 logger.debug("Cookie-based refresh failed: no access-token cookie received")
                 self._session.close()

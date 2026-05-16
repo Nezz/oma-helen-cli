@@ -45,6 +45,7 @@ class HelenApiClient:
             self._saved_cookies = session.get_all_cookies()
         else:
             self._session = session.login(username, password)
+            self._saved_cookies = self._session.get_all_cookies()
         self._refresh_api_client_state()
         return self
 

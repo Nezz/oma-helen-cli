@@ -70,6 +70,8 @@ class HelenCLIPrompt(Cmd):
 
     def __init__(self, username: str, password: str) -> None:
         super().__init__()
+        self._username = username
+        self._password = password
         self.helen_price_client = HelenPriceClient()
         self.tax: float = 0.255  # 25.5%
         self.margin: float = self.helen_price_client.get_exchange_prices().margin
@@ -214,6 +216,13 @@ class HelenCLIPrompt(Cmd):
 
         access_token = self.api_client.get_api_access_token()
         print(access_token)
+
+    def do_test_token_refresh(self, arg: str | None = None) -> None:
+        """Test session re-authentication. Closes the current session and logs in again."""
+
+        self.api_client.close()
+        self.api_client.login_and_init(self._username, self._password)
+        print(self.api_client.get_api_access_token())
 
     def do_get_contract_energy_unit_price(self, arg: str | None = None) -> None:
         """Get the energy unit price from your contract data.

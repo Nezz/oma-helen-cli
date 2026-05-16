@@ -194,8 +194,9 @@ class TestGetAllCookies:
         mock_cookie.name = "access-token"
         mock_cookie.value = "tok-abc"
         mock_cookie.domain = "www.helen.fi"
+        mock_cookie.path = "/"
         mock_requests.cookies.__iter__ = MagicMock(return_value=iter([mock_cookie]))
-        assert session.get_all_cookies() == [("access-token", "tok-abc", "www.helen.fi")]
+        assert session.get_all_cookies() == [("access-token", "tok-abc", "www.helen.fi", "/")]
 
 
 class TestRefresh:
@@ -209,11 +210,16 @@ class TestRefresh:
             mock_session_cls.return_value = mock_requests
             mock_requests.cookies.get.return_value = "new-tok"
 
-            result = session.refresh([("refresh-token", "rt-abc", "www.helen.fi")])
+            result = session.refresh([
+                ("refresh-token", "rt-abc", ".oma.helen.fi", "/"),
+                ("access-token", "old-tok", ".oma.helen.fi", "/"),
+            ])
 
         assert result is True
         get_call = mock_requests.get.call_args
         assert get_call.args[0] == HELEN_SESSION_RENEWAL_URL
+        set_calls = [call.args[0] for call in mock_requests.cookies.set.call_args_list]
+        assert "access-token" in set_calls
 
     def test_failure_when_no_access_token_cookie_after_get(self):
         session = HelenSession()
@@ -222,7 +228,7 @@ class TestRefresh:
             mock_session_cls.return_value = mock_requests
             mock_requests.cookies.get.return_value = None
 
-            result = session.refresh([("refresh-token", "rt-abc", "www.helen.fi")])
+            result = session.refresh([("refresh-token", "rt-abc", ".oma.helen.fi", "/")])
 
         assert result is False
         assert session._session is None
@@ -234,7 +240,8 @@ class TestRefresh:
             mock_session_cls.return_value = mock_requests
             mock_requests.get.side_effect = ConnectionError("network down")
 
-            result = session.refresh([("refresh-token", "rt-abc", "www.helen.fi")])
+            result = session.refresh([("refresh-token", "rt-abc", ".oma.helen.fi", "/")])
 
         assert result is False
         assert session._session is None
+
