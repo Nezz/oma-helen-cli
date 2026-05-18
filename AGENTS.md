@@ -46,26 +46,35 @@ Ruff is configured in `pyproject.toml` with rules: E, F, I (isort), B (bugbear),
 
 ### Module Responsibilities
 
-- **`helenservice/helen_session.py` — `HelenSession`**: Handles the multi-step OAuth/form-based login to `login.helen.fi`. Follows HTML form redirects (BeautifulSoup), extracts `access-token` cookie, and stores it in a `requests.Session`. This is the most fragile layer — it scrapes HTML forms and can break when Helen changes their login flow.
-
-- **`helenservice/api_client.py` — `HelenApiClient`**: Main API wrapper. Uses the `access-token` from `HelenSession` as a Bearer token for REST calls to `api.omahelen.fi/v25` and `v26`. Maintains selected contract state (`_selected_contract`, `_selected_delivery_site_id`) and uses `cachetools.TTLCache` (1-hour TTL) for expensive GET requests. Also contains calculation logic for costs and impact-of-usage.
-
-- **`helenservice/price_client.py` — `HelenPriceClient`**: Scrapes market prices and exchange electricity margin from public Helen.fi product pages (no auth required). Results are cached in-memory with a 1-hour TTL via timestamp check.
-
-- **`helenservice/api_response.py`**: Plain Python classes (`MeasurementsWithSpotPriceResponse`, `SpotPriceChartResponse`) that wrap API JSON responses. `**_` in constructors silently ignores unknown fields for forward-compatibility.
-
-- **`helenservice/cli.py` — `HelenCLIPrompt`**: Extends Python's `cmd.Cmd`. Each `do_*` method is a CLI command. JSON output uses `_json_serializer` for `date`/`datetime` objects and dataclass-style objects.
+- **`helenservice/helen_session.py` — `HelenSession`**: Ubisecure OAuth login and cookie-based session renewal. Most fragile layer — scrapes HTML forms that can break when Helen changes their login UI.
+- **`helenservice/api_client.py` — `HelenApiClient`**: Bearer-token REST client for `api.omahelen.fi/v25` and `v26`. `login_and_init()` tries cookie-based renewal first, falls back to full login; `close()` saves cookies for the next renewal attempt. Uses `cachetools.TTLCache` (1-hour TTL) for expensive GETs. Also contains cost/impact calculation logic.
+- **`helenservice/price_client.py` — `HelenPriceClient`**: Scrapes market prices from public Helen.fi pages (no auth). 1-hour in-memory TTL cache.
+- **`helenservice/api_response.py`**: Response wrapper classes; `**_` in constructors silently drops unknown fields for forward-compatibility.
+- **`helenservice/cli.py` — `HelenCLIPrompt`**: `cmd.Cmd` subclass; one `do_*` method per CLI command.
 
 ### Key Design Details
 
-**Contract selection**: On login, `HelenApiClient` fetches all contracts and auto-selects the most recently started active contract. Users can override via `select_delivery_site`. The `_selected_contract` dict drives which GSRN is used in measurement API calls.
+**Login flow (5 steps via `login.helen.fi` / Ubisecure):**
+1. POST auth endpoint → scrape login-form URL from response HTML
+2. POST credentials → response contains OAuth `code` + `state` hidden form
+3. GET `www.helen.fi/continue?code&state` → page with a `<a href>` link
+4. GET the link (`_fix_url` normalises stale API version and legacy domain) → second code+state form
+5. GET code exchange → `access-token` cookie set at `.oma.helen.fi`
 
-**Electricity transfer contracts**: When a contract's `domain == "electricity-transfer"`, the measurements API uses channel `"osv"` instead of `"oh"`. The `MeasurementsWithSpotPriceSeries` class normalizes this: it uses `electricity_transfer` value when `electricity` is `None`.
+**Session renewal:** `close()` saves all cookies (including `JSESSIONID` at `login.helen.fi`) via `get_all_cookies()`. The next `login_and_init()` calls `refresh()`, which replays them all against `HELEN_SESSION_RENEWAL_URL`. When `JSESSIONID` is still alive server-side (~1–2 h of inactivity), Ubisecure returns an "Access granted" page with an auto-submit JS form containing a new OAuth `code`. `refresh()` submits it manually (requests doesn't run JS). If `JSESSIONID` has expired, the page is a login form (no `code` input) → `refresh()` returns `False` → fall back to full credential login.
 
-**Time zone handling**: The Oma Helen API uses Helsinki local midnight as interval boundaries. `_get_utc_time_range()` converts date ranges to UTC using `ZoneInfo("Europe/Helsinki")` — midnight Helsinki → 21:00 or 22:00 UTC of the previous day depending on DST.
+**Two OAuth `client_id`s:** full login uses `239967c8-c1b3-4786-9cc9-035b181bfa75`; renewal uses `7cde929b-a93b-4bea-985e-6782994d4114` (the Oma Helen web client registered at `api.oma.helen.fi/v20/`).
 
-**API versioning**: Most endpoints use v25, but chart-data (measurements) uses v26. The `HELEN_API_URL_V25/V26` constants on `HelenApiClient` track this.
+**Contract selection:** On login, `HelenApiClient` auto-selects the most recently started active contract. Override via `select_delivery_site`. `_selected_contract` drives which GSRN is used in measurement calls.
+
+**Electricity transfer contracts:** `domain == "electricity-transfer"` → channel `"osv"` instead of `"oh"`. `MeasurementsWithSpotPriceSeries` normalises this by falling back to `electricity_transfer` when `electricity` is `None`.
+
+**Time zone handling:** API uses Helsinki local midnight as boundaries. `_get_utc_time_range()` converts via `ZoneInfo("Europe/Helsinki")` → 21:00Z or 22:00Z of the previous UTC day depending on DST.
+
+**API versioning:** Most endpoints use v25; chart-data (measurements) uses v26.
 
 ### Test Structure
 
-Tests in `tests/` use `pytest` with `unittest.mock`. Fixtures in `test_api_client.py` set up a `HelenApiClient` with a mocked session. JSON fixtures in `tests/resources/` represent real API response shapes used by tests.
+- `tests/test_helen_session.py` — `HelenSession`: login flow (5-step mock), cookie renewal (code-exchange path), `is_token_valid()`, HTML helper edge cases
+- `tests/test_api_client.py` — `HelenApiClient`: measurement/contract endpoints, HTTP error handling, transfer channel, cookie save/restore
+- `tests/resources/` — JSON fixtures representing real API response shapes
