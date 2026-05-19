@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oma-helen-cli"
-version = "1.7.0b4"
+version = "1.7.0"
 description = "Oma Helen API library and CLI"
 readme = "README.md"
 license = { text = "MIT" }
