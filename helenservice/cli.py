@@ -21,14 +21,17 @@ logger = logging.getLogger(__name__)
 
 class HasDict(Protocol):
     """Protocol defining objects that possess a __dict__ attribute."""
+
     __dict__: dict[str, Any]
 
 
 @overload
 def _json_serializer(value: datetime | date) -> str: ...
 
+
 @overload
 def _json_serializer(value: HasDict) -> dict[str, Any]: ...
+
 
 def _json_serializer(value: datetime | date | HasDict) -> str | dict[str, Any]:
     if isinstance(value, datetime):
@@ -217,8 +220,10 @@ class HelenCLIPrompt(Cmd):
         access_token = self.api_client.get_api_access_token()
         print(access_token)
 
-    def do_test_token_refresh(self, arg: str | None = None) -> None:
-        """Test session re-authentication. Closes the current session and logs in again."""
+    def do_refresh_token(self, arg: str | None = None) -> None:
+        """Re-authenticate the session. Closes the current session and logs in again.
+        Tries to refresh the access token, but if that fails, it will log in again with
+        the username and password."""
 
         self.api_client.close()
         self.api_client.login_and_init(self._username, self._password)
