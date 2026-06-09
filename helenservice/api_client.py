@@ -19,8 +19,7 @@ from .helen_session import HelenSession
 
 # TODO: consider moving all calculation functions somewhere else - they are not related to HelenApiClient
 class HelenApiClient:
-    HELEN_API_URL_V25 = "https://api.omahelen.fi/v25"
-    HELEN_API_URL_V26 = "https://api.omahelen.fi/v26"
+    HELEN_API_URL_V28 = "https://api.oma.helen.fi/v28"
     SPOT_PRICES_CHART_ENDPOINT = "/chart-data/electricity/spot-prices/daily"
     CONTRACT_ENDPOINT = "/contract/list"
 
@@ -183,7 +182,7 @@ class HelenApiClient:
 
         chart_params = {"start": start_time, "stop": end_time, "resolution": resolution, "channel": channel}
 
-        chart_url = f"{self.HELEN_API_URL_V26}/chart-data/{gsrn_id}/electricity"
+        chart_url = f"{self.HELEN_API_URL_V28}/chart-data/{gsrn_id}/electricity"
         logger.debug("GET %s params=%s", chart_url, chart_params)
         response = requests.get(
             chart_url,
@@ -213,7 +212,7 @@ class HelenApiClient:
 
         chart_params = {"start": start_time, "stop": end_time}
 
-        chart_url = self.HELEN_API_URL_V25 + self.SPOT_PRICES_CHART_ENDPOINT
+        chart_url = self.HELEN_API_URL_V28 + self.SPOT_PRICES_CHART_ENDPOINT
         logger.debug("GET %s params=%s", chart_url, chart_params)
         response = requests.get(
             chart_url,
@@ -228,7 +227,7 @@ class HelenApiClient:
     def get_contract_data_json(self):
         """Get your contract data."""
 
-        contract_url = self.HELEN_API_URL_V25 + self.CONTRACT_ENDPOINT
+        contract_url = self.HELEN_API_URL_V28 + self.CONTRACT_ENDPOINT
         contract_params = {"include_transfer": "true", "update": "true", "include_products": "true"}
         logger.debug("GET %s params=%s", contract_url, contract_params)
         contract_response_dict = requests.get(
