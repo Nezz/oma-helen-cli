@@ -35,7 +35,7 @@ class TestHelenApiClient:
         with patch("requests.get", return_value=self._mock_response(self._load("measurement_spot_day_response.json"))) as mock_get:
             result = api_client.get_daily_measurements_between_dates(date(2025, 9, 7), date(2025, 10, 8))
 
-        self._assert_v26_chart_data_call(mock_get, resolution="day")
+        self._assert_v28_chart_data_call(mock_get, resolution="day")
         assert isinstance(result, MeasurementsWithSpotPriceResponse)
         assert result.resolution == "day"
         assert len(result.series) > 0
@@ -44,7 +44,7 @@ class TestHelenApiClient:
         with patch("requests.get", return_value=self._mock_response(self._load("measurement_spot_hour_response.json"))) as mock_get:
             result = api_client.get_measurements_between_dates(date(2025, 9, 7), date(2025, 9, 8), RESOLUTION_HOUR)
 
-        self._assert_v26_chart_data_call(mock_get, resolution="hour")
+        self._assert_v28_chart_data_call(mock_get, resolution="hour")
         assert isinstance(result, MeasurementsWithSpotPriceResponse)
         assert result.resolution == "hour"
         assert len(result.series) > 0
@@ -53,7 +53,7 @@ class TestHelenApiClient:
         with patch("requests.get", return_value=self._mock_response(self._load("measurement_spot_day_response.json"))) as mock_get:
             result = api_client.get_monthly_measurements_by_year(2025)
 
-        self._assert_v26_chart_data_call(mock_get, resolution="month")
+        self._assert_v28_chart_data_call(mock_get, resolution="month")
         assert isinstance(result, MeasurementsWithSpotPriceResponse)
 
     def test_get_spot_prices_from_chart_data(self, api_client):
@@ -87,7 +87,7 @@ class TestHelenApiClient:
         with patch("requests.get", return_value=self._mock_response(self._load(resource))) as mock_get:
             result = api_client.get_measurements_with_spot_prices(date(2025, 10, 6), date(2025, 10, 7), resolution)
 
-        self._assert_v26_chart_data_call(mock_get, resolution=resolution)
+        self._assert_v28_chart_data_call(mock_get, resolution=resolution)
         assert isinstance(result, MeasurementsWithSpotPriceResponse)
         assert result.resolution == resolution
         assert len(result.series) > 0
@@ -121,7 +121,7 @@ class TestHelenApiClient:
         """Non-2xx responses must raise InvalidApiResponseException instead of producing
         a confusing TypeError when the error body is fed into MeasurementsWithSpotPriceResponse.
 
-        Regression test for v26 chart-data endpoint returning errors such as
+        Regression test for v28 chart-data endpoint returning errors such as
         ``no-relevant-contract`` (403) for transfer-only delivery sites.
         """
         response = self._mock_response(json_body=body, ok=False, status_code=status_code)
@@ -150,7 +150,7 @@ class TestHelenApiClient:
         with patch("requests.get", return_value=self._mock_response(body)) as mock_get:
             result = api_client_transfer.get_daily_measurements_between_dates(date(2025, 10, 1), date(2025, 10, 4))
 
-        self._assert_v26_chart_data_call(mock_get, resolution="day", channel="osv")
+        self._assert_v28_chart_data_call(mock_get, resolution="day", channel="osv")
         assert isinstance(result, MeasurementsWithSpotPriceResponse)
         first = result.series[0]
         assert first.electricity == 10.0
@@ -197,12 +197,12 @@ class TestHelenApiClient:
         return response
 
     @staticmethod
-    def _assert_v26_chart_data_call(mock_get, *, resolution, channel="oh"):
+    def _assert_v28_chart_data_call(mock_get, *, resolution, channel="oh"):
         mock_get.assert_called_once()
         args, kwargs = mock_get.call_args
         url = args[0]
         params = kwargs["params"]
-        assert "v26" in url
+        assert "v28" in url
         assert "chart-data" in url
         assert params["resolution"] == resolution
         assert params["channel"] == channel
