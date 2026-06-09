@@ -1,9 +1,12 @@
+import logging
 from datetime import date, datetime, timedelta
 
 from bs4 import BeautifulSoup
 from requests import get
 
 from .const import HTTP_READ_TIMEOUT
+
+logger = logging.getLogger(__name__)
 
 
 class VattenfallPriceClient:
@@ -13,19 +16,21 @@ class VattenfallPriceClient:
 
     def get_hourly_prices_for_day(self, day: date):
         url = self.HOURLY_PRICES_URL.format(date=day)
+        logger.debug("GET %s", url)
         response = get(url, headers=self.HEADERS)
         if response.status_code == 200:
             return response.json()
         else:
-            print("Could not fetch prices. Response code was: " + str(response.status_code))
+            logger.warning("Could not fetch prices. Response code was: %s", response.status_code)
 
     def get_daily_average_prices_between_dates(self, start_date: date, end_date: date):
         url = self.DAILY_AVERAGE_PRICES_URL.format(start_date=start_date, end_date=end_date)
+        logger.debug("GET %s", url)
         response = get(url, headers=self.HEADERS)
         if response.status_code == 200:
             return response.json()
         else:
-            print("Could not fetch prices. Response code was: " + str(response.status_code))
+            logger.warning("Could not fetch prices. Response code was: %s", response.status_code)
 
 
 class HelenPrices:
@@ -72,6 +77,7 @@ class HelenPriceClient:
     def _scrape_market_price_prices(self):
         kwh_substring = " c/kWh"
 
+        logger.debug("GET %s", self.MARKET_PRICE_ELECTRICITY_URL)
         price_site_response = get(self.MARKET_PRICE_ELECTRICITY_URL, timeout=HTTP_READ_TIMEOUT)
         price_site_soup = BeautifulSoup(price_site_response.text, "html.parser")
 
@@ -107,6 +113,7 @@ class HelenPriceClient:
         return self._helen_market_price_prices
 
     def _scrape_exchange_prices(self):
+        logger.debug("GET %s", self.EXCHANGE_ELECTRICITY_URL)
         price_site_response = get(self.EXCHANGE_ELECTRICITY_URL, timeout=HTTP_READ_TIMEOUT)
         price_site_soup = BeautifulSoup(price_site_response.text, "html.parser")
 

@@ -184,6 +184,7 @@ class HelenApiClient:
         chart_params = {"start": start_time, "stop": end_time, "resolution": resolution, "channel": channel}
 
         chart_url = f"{self.HELEN_API_URL_V26}/chart-data/{gsrn_id}/electricity"
+        logger.debug("GET %s params=%s", chart_url, chart_params)
         response = requests.get(
             chart_url,
             params=chart_params,
@@ -213,6 +214,7 @@ class HelenApiClient:
         chart_params = {"start": start_time, "stop": end_time}
 
         chart_url = self.HELEN_API_URL_V25 + self.SPOT_PRICES_CHART_ENDPOINT
+        logger.debug("GET %s params=%s", chart_url, chart_params)
         response = requests.get(
             chart_url,
             params=chart_params,
@@ -228,6 +230,7 @@ class HelenApiClient:
 
         contract_url = self.HELEN_API_URL_V25 + self.CONTRACT_ENDPOINT
         contract_params = {"include_transfer": "true", "update": "true", "include_products": "true"}
+        logger.debug("GET %s params=%s", contract_url, contract_params)
         contract_response_dict = requests.get(
             contract_url,
             headers=self._api_request_headers(),
@@ -266,7 +269,7 @@ class HelenApiClient:
         self._selected_delivery_site_id = str(found_delivery_site_id)
         self._refresh_api_client_state()
         self._invalidate_caches()
-        logging.warning("Delivery site set to '%s'", delivery_site_id)
+        logger.warning("Delivery site set to '%s'", delivery_site_id)
 
     def get_contract_base_price(self) -> float:
         """Get the contract base price from your contract data."""
@@ -278,12 +281,12 @@ class HelenApiClient:
         products = contract["products"] if contract else []
         product = next(filter(lambda p: p["product_type"] == "energy", products), None)
         if not product:
-            logging.warning("Could not resolve contract base price from Helen API response. Returning 0.0")
+            logger.warning("Could not resolve contract base price from Helen API response. Returning 0.0")
             return 0.0
         components = product["components"] if product else []
         base_price_component = next(filter(lambda component: component["is_base_price"], components), None)
         if not base_price_component:
-            logging.warning("Could not resolve contract base price from Helen API response. Returning 0.0")
+            logger.warning("Could not resolve contract base price from Helen API response. Returning 0.0")
             return 0.0
         return base_price_component["price"]
 
@@ -297,7 +300,7 @@ class HelenApiClient:
         products = contract["products"] if contract else []
         product = next(filter(lambda p: p["product_type"] == "energy", products), None)
         if not product:
-            logging.warning("Could not resolve contract type from Helen API response. Returning None")
+            logger.warning("Could not resolve contract type from Helen API response. Returning None")
             return None
         return product["id"]
 
@@ -314,14 +317,14 @@ class HelenApiClient:
         products = contract["products"] if contract else []
         product = next(filter(lambda p: p["product_type"] == "energy", products), None)
         if not product:
-            logging.warning("Could not resolve energy price from Helen API response. Returning 0.0")
+            logger.warning("Could not resolve energy price from Helen API response. Returning 0.0")
             return 0.0
         if not product:
             raise InvalidApiResponseException("Product data is empty or None")
         components = product["components"] if product else []
         energy_unit_price_component = next(filter(lambda component: component["name"] == "Energia", components), None)
         if not energy_unit_price_component:
-            logging.warning("Could not resolve energy price from Helen API response. Returning 0.0")
+            logger.warning("Could not resolve energy price from Helen API response. Returning 0.0")
             return 0.0
         return energy_unit_price_component["price"]
 
@@ -335,12 +338,12 @@ class HelenApiClient:
         products = contract["products"] if contract else []
         product = next(filter(lambda p: p["product_type"] == "transfer", products), None)
         if not product:
-            logging.warning("Could not resolve transfer fees from Helen API response. Returning 0.0")
+            logger.warning("Could not resolve transfer fees from Helen API response. Returning 0.0")
             return 0.0
         components = product["components"] if product else []
         transfer_fee_component = next(filter(lambda component: component["name"] == "Siirtomaksu", components), None)
         if transfer_fee_component is None:
-            logging.warning("Could not resolve transfer fees from Helen API response. Returning 0.0")
+            logger.warning("Could not resolve transfer fees from Helen API response. Returning 0.0")
             return 0.0
         return transfer_fee_component["price"]
 
@@ -354,12 +357,12 @@ class HelenApiClient:
         products = contract["products"] if contract else []
         product = next(filter(lambda p: p["product_type"] == "transfer", products), None)
         if not product:
-            logging.warning("Could not resolve transfer base price from Helen API response. Returning 0.0")
+            logger.warning("Could not resolve transfer base price from Helen API response. Returning 0.0")
             return 0.0
         components = product["components"] if product else []
         transfer_base_price_component = next(filter(lambda component: component["is_base_price"], components), None)
         if transfer_base_price_component is None:
-            logging.warning("Could not resolve transfer base price from Helen API response. Returning 0.0")
+            logger.warning("Could not resolve transfer base price from Helen API response. Returning 0.0")
             return 0.0
         return transfer_base_price_component["price"]
 
@@ -439,13 +442,13 @@ class HelenApiClient:
                     )
                 )
         if active_contracts.__len__() > 1:
-            logging.debug("Found multiple active Helen contracts. Using the newest one.")
+            logger.debug("Found multiple active Helen contracts. Using the newest one.")
             active_contracts.sort(
                 key=lambda contract: datetime.strptime(contract["start_date"], '%Y-%m-%dT%H:%M:%S'),
                 reverse=True,
             )
         if active_contracts.__len__() == 0:
-            logging.error("No active contracts found")
+            logger.error("No active contracts found")
             return None
         return active_contracts[0]
 
@@ -454,7 +457,7 @@ class HelenApiClient:
         Resolves the latest contract from a list of contracts.
         """
         if contracts.__len__() == 0:
-            logging.error("No contracts found")
+            logger.error("No contracts found")
             return None
         contracts.sort(
             key=lambda contract: datetime.strptime(contract["start_date"], '%Y-%m-%dT%H:%M:%S'),
