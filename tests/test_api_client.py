@@ -87,6 +87,34 @@ class TestHelenApiClient:
             result = api_client.get_contract_start_date()
         assert result == date(2020, 11, 5)
 
+    def test_get_contract_start_date_missing_field(self, api_client):
+        from unittest.mock import patch
+        api_client._selected_contract = {"other_field": "value"}  # Non-empty dict without start_date
+        with patch.object(api_client, "_refresh_api_client_state"):
+            result = api_client.get_contract_start_date()
+        assert result is None
+
+    def test_get_contract_start_date_none_value(self, api_client):
+        from unittest.mock import patch
+        api_client._selected_contract = {"start_date": None}
+        with patch.object(api_client, "_refresh_api_client_state"):
+            result = api_client.get_contract_start_date()
+        assert result is None
+
+    def test_get_contract_start_date_invalid_format(self, api_client):
+        from unittest.mock import patch
+        api_client._selected_contract = {"start_date": "invalid-date"}
+        with patch.object(api_client, "_refresh_api_client_state"):
+            result = api_client.get_contract_start_date()
+        assert result is None
+
+    def test_get_contract_start_date_empty_contract(self, api_client):
+        from unittest.mock import patch
+        api_client._selected_contract = None
+        with patch.object(api_client, "_refresh_api_client_state"):
+            with pytest.raises(InvalidApiResponseException, match="Contract data is empty or None"):
+                api_client.get_contract_start_date()
+
     @pytest.mark.parametrize(
         "resolution,resource,expect_ambient",
         [

@@ -303,13 +303,23 @@ class HelenApiClient:
             return None
         return product["id"]
 
-    def get_contract_start_date(self) -> date:
+    def get_contract_start_date(self) -> date | None:
         """Return the start date of the currently selected contract."""
         self._refresh_api_client_state()
         contract = self._selected_contract
         if not contract:
             raise InvalidApiResponseException("Contract data is empty or None")
-        return datetime.strptime(contract["start_date"], '%Y-%m-%dT%H:%M:%S').date()
+        
+        start_date = contract.get("start_date")
+        if start_date is None:
+            logger.warning("Could not resolve contract start_date from Helen API response. Returning None")
+            return None
+        
+        try:
+            return datetime.strptime(start_date, '%Y-%m-%dT%H:%M:%S').date()
+        except ValueError:
+            logger.warning(f"Invalid start_date format: {start_date}. Returning None")
+            return None
 
     def get_contract_energy_unit_price(self) -> float:
         """
