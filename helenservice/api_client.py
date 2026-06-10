@@ -303,6 +303,14 @@ class HelenApiClient:
             return None
         return product["id"]
 
+    def get_contract_start_date(self) -> date:
+        """Return the start date of the currently selected contract."""
+        self._refresh_api_client_state()
+        contract = self._selected_contract
+        if not contract:
+            raise InvalidApiResponseException("Contract data is empty or None")
+        return datetime.strptime(contract["start_date"], '%Y-%m-%dT%H:%M:%S').date()
+
     def get_contract_energy_unit_price(self) -> float:
         """
         Get the fixed unit price for electricity from your contract data. Returns '0.0' for spot electricity contracts

@@ -76,6 +76,17 @@ class TestHelenApiClient:
         assert isinstance(result, list) and len(result) > 0
         assert "contract_id" in result[0] and "delivery_site" in result[0]
 
+    def test_get_contract_start_date(self, api_client):
+        from datetime import date
+        from unittest.mock import patch
+        api_client._selected_contract = {
+            **api_client._selected_contract,
+            "start_date": "2020-11-05T00:00:00",
+        }
+        with patch.object(api_client, "_refresh_api_client_state"):
+            result = api_client.get_contract_start_date()
+        assert result == date(2020, 11, 5)
+
     @pytest.mark.parametrize(
         "resolution,resource,expect_ambient",
         [
