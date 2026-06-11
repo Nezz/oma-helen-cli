@@ -269,6 +269,13 @@ class HelenCLIPrompt(Cmd):
         contract_type = self.api_client.get_contract_type()
         print(contract_type)
 
+    def do_get_contract_start_date(self, arg: str | None = None) -> None:
+        """Get the start date of the selected contract.
+        To see the whole contract data as JSON, use get_contract_data_json"""
+
+        start_date = self.api_client.get_contract_start_date()
+        print(start_date)
+
     def do_get_spot_prices_chart_data(self, arg: str | None = None) -> None:
         """Get spot prices from chart data API for a single day.
         Data includes 15-minute intervals with VAT and non-VAT prices.
