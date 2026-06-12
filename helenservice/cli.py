@@ -9,7 +9,11 @@ from datetime import date, datetime
 from getpass import getpass
 from typing import Any, Protocol, overload
 
-from helenservice.api_exceptions import HelenAuthenticationException, InvalidDeliverySiteException
+from helenservice.api_exceptions import (
+    HelenAuthenticationException,
+    InvalidApiResponseException,
+    InvalidDeliverySiteException,
+)
 
 from .api_client import HelenApiClient
 from .const import RESOLUTION_HOUR, RESOLUTION_QUARTER
@@ -80,6 +84,22 @@ class HelenCLIPrompt(Cmd):
         self.margin: float = self.helen_price_client.get_exchange_prices().margin
         self.api_client = HelenApiClient(self.tax, self.margin)
         self.api_client.login_and_init(username, password)
+
+    def onecmd(self, line: str) -> bool:
+        try:
+            return super().onecmd(line)
+        except HelenAuthenticationException as exc:
+            print(f"Authentication error: {exc}. Try running 'refresh_token'.")
+            logger.debug("Authentication error", exc_info=True)
+            return False
+        except InvalidApiResponseException as exc:
+            print(f"API error: {exc}")
+            logger.debug("API error", exc_info=True)
+            return False
+        except Exception as exc:
+            print(f"Unexpected error: {exc}")
+            logger.debug("Unexpected error", exc_info=True)
+            return False
 
     def do_exit(self, arg: str | None = None) -> bool:
         """Exit the CLI"""
